@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.jenkinsci.plugins.dockerbuildstep.action.EnvInvisibleAction;
+import org.jenkinsci.plugins.dockerbuildstep.action.ExecEnvInvisibleAction;
 
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.Ports.Binding;
@@ -35,11 +36,17 @@ public class DockerEnvContributor extends EnvironmentContributor {
 	public final String PORT_BINDINGS_ENV_VAR = "DOCKER_HOST_BIND_PORTS";
 	public final String PORT_BINDING_PREFIX = "DOCKER_HOST_PORT_";
 	public final String HOST_SOCKET_PREFIX = "DOCKER_HOST_SOCKET_";
+	public final String EXEC_COMMAND_ID_PREFIX = "EXEC_COMMAND_ID_";
 
 	@Override
 	public void buildEnvironmentFor(@SuppressWarnings("rawtypes") Run r, EnvVars envs, TaskListener listener)
 			throws IOException, InterruptedException {
 
+		buildContainerEnvironment(r, envs);
+		buildExecCommandEnvironment(r, envs);
+	}
+
+	private void buildContainerEnvironment(@SuppressWarnings("rawtypes")Run r, EnvVars envs) {
 		List<EnvInvisibleAction> envActions = r.getActions(EnvInvisibleAction.class);
 		if (envActions.size() == 0) {
 			return;
@@ -61,6 +68,13 @@ public class DockerEnvContributor extends EnvironmentContributor {
 		containerIds.remove("");
 
 		envs.put(CONTAINER_IDS_ENV_VAR, Joiner.on(ID_SEPARATOR).join(containerIds));
+	}
+
+	private void buildExecCommandEnvironment(@SuppressWarnings("rawtypes")Run r, EnvVars envs) {
+		List<ExecEnvInvisibleAction> execEnvActions = r.getActions(ExecEnvInvisibleAction.class);
+		for (ExecEnvInvisibleAction action : execEnvActions) {
+			envs.put(EXEC_COMMAND_ID_PREFIX + action.getContainerId(), action.getCommandId());
+		}
 	}
 
 	private void exportPortBindings(EnvVars envs, Map<ExposedPort, Binding[]> bindings) {

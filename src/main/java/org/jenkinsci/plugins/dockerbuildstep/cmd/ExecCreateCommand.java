@@ -6,6 +6,7 @@ import hudson.model.AbstractBuild;
 import java.util.Arrays;
 import java.util.List;
 
+import org.jenkinsci.plugins.dockerbuildstep.action.ExecEnvInvisibleAction;
 import org.jenkinsci.plugins.dockerbuildstep.log.ConsoleLogger;
 import org.jenkinsci.plugins.dockerbuildstep.util.Resolver;
 import org.kohsuke.stapler.DataBoundConstructor;
@@ -55,7 +56,8 @@ public class ExecCreateCommand extends DockerCommand {
 			id = id.trim();
 			ExecCreateCmdResponse res = client.execCreateCmd(id).withCmd(commandRes.split(" ")).exec();
 			console.logInfo(String.format("Exec command with ID '%s' created in container '%s' ", res.getId(), id));
-			// TODO export env. variables with command IDs
+			ExecEnvInvisibleAction envAction = new ExecEnvInvisibleAction(id, res);
+            build.addAction(envAction);
 		}
 
 	}

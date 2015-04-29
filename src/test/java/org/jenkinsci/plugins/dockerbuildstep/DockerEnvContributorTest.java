@@ -27,10 +27,20 @@ import static org.junit.Assert.assertEquals;
 import hudson.EnvVars;
 import hudson.model.FreeStyleBuild;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.jenkinsci.plugins.dockerbuildstep.action.EnvInvisibleAction;
+import org.jenkinsci.plugins.dockerbuildstep.action.ExecEnvInvisibleAction;
 import org.junit.Rule;
 import org.junit.Test;
 import org.jvnet.hudson.test.JenkinsRule;
+
+import com.github.dockerjava.api.command.ExecCreateCmdResponse;
+import com.github.dockerjava.api.model.ExposedPort;
+import com.github.dockerjava.api.model.InternetProtocol;
+import com.github.dockerjava.api.model.Ports;
+import com.github.dockerjava.api.model.Ports.Binding;
 
 public class DockerEnvContributorTest {
 
@@ -87,6 +97,81 @@ public class DockerEnvContributorTest {
         assertEquals("existing,duplicate,new", envVars.get(contributor.CONTAINER_IDS_ENV_VAR));
     }
 
+    @Test
+    public void singleExecCommandSetsCommandId() throws Exception {
+        FreeStyleBuild build = j.createFreeStyleProject().scheduleBuild2(0).get();
+
+        final EnvVars envVars = new EnvVars();
+
+        build.addAction(new ExecEnvInvisibleAction("test-container-id",
+            createDummyExecCreateCmdResponse("exec-command-id")));
+
+        contributor.buildEnvironmentFor(build, envVars, null);
+
+        assertEquals(
+            "exec-command-id",
+            envVars.get(contributor.EXEC_COMMAND_ID_PREFIX
+                + "test-container-id"));
+    }
+
+    @Test
+    public void multipleExecCommandSetsAllCommandIds() throws Exception {
+        FreeStyleBuild build = j.createFreeStyleProject().scheduleBuild2(0).get();
+
+        final EnvVars envVars = new EnvVars();
+
+        build.addAction(new ExecEnvInvisibleAction("test-container-id1",
+            createDummyExecCreateCmdResponse("exec-command-id1")));
+        build.addAction(new ExecEnvInvisibleAction("test-container-id2",
+            createDummyExecCreateCmdResponse("exec-command-id2")));
+
+        contributor.buildEnvironmentFor(build, envVars, null);
+
+        assertEquals(
+            "exec-command-id1",
+            envVars.get(contributor.EXEC_COMMAND_ID_PREFIX
+                + "test-container-id1"));
+        assertEquals(
+            "exec-command-id2",
+            envVars.get(contributor.EXEC_COMMAND_ID_PREFIX
+                + "test-container-id2"));
+    }
+
+    @Test
+    public void portVariablesArePopulated() throws Exception {
+        FreeStyleBuild build = j.createFreeStyleProject().scheduleBuild2(0).get();
+
+        final EnvVars envVars = new EnvVars();
+
+        build.addAction(contributedEnvVars("id"));
+
+        contributor.buildEnvironmentFor(build, envVars, null);
+
+        assertEquals("5432",
+            envVars.get(contributor.PORT_BINDING_PREFIX + "TCP_1234"));
+    }
+
+    @Test
+    public void portAndCommandVariablesArePopulated() throws Exception {
+        FreeStyleBuild build = j.createFreeStyleProject().scheduleBuild2(0).get();
+
+        final EnvVars envVars = new EnvVars();
+
+        build.addAction(contributedEnvVars("id"));
+    
+        build.addAction(new ExecEnvInvisibleAction("test-container-id",
+            createDummyExecCreateCmdResponse("exec-command-id")));
+
+        contributor.buildEnvironmentFor(build, envVars, null);
+
+        assertEquals("5432",
+            envVars.get(contributor.PORT_BINDING_PREFIX + "TCP_1234"));
+        assertEquals(
+            "exec-command-id",
+            envVars.get(contributor.EXEC_COMMAND_ID_PREFIX
+                + "test-container-id"));
+    }
+
     private EnvVars existingEnvVars(String ids) {
         return new EnvVars(contributor.CONTAINER_IDS_ENV_VAR, ids);
     }
@@ -106,7 +191,27 @@ public class DockerEnvContributorTest {
             }
 
             @Override public boolean hasPortBindings() {
-                return false;
+                return true;
+            }
+
+            @Override public Map<ExposedPort, Binding[]> getPortBindings() {
+                Ports.Binding[] bindings = new Ports.Binding[1];
+                bindings[0] = new Ports.Binding(5432);
+
+                Map<ExposedPort, Ports.Binding[]> portMap = new HashMap<ExposedPort, Ports.Binding[]>();
+                portMap.put(new ExposedPort(1234,
+                    InternetProtocol.TCP), bindings);
+                return portMap;
+            }
+        };
+    }
+
+    private ExecCreateCmdResponse createDummyExecCreateCmdResponse(
+        final String commandId) {
+        return new ExecCreateCmdResponse() {
+            @Override
+            public String getId() {
+                return commandId;
             }
         };
     }
